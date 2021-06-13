@@ -3,82 +3,36 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/sem.h>
-
-union semun {
-	int val;
-	struct semid_ds *buf;
-	ushort *array;
-};
-
-#define PATH "/mnt/C/Users/"
 
 typedef struct __counter_t {
     int value;
-    int semid;
-    key_t key;
-    union semun arg;
+    pthread_mutex_t lock;
 } counter_t;
 
 unsigned int loop_cnt;
 counter_t counter;
 
-void init(counter_t *c, char *argv[]) {
+void init(counter_t *c) {
     c->value = 0;
-    c->key = ftok(PATH, 'z');
-    c->semid = semget(c->key, 1, 0600 | IPC_CREAT);
-    c->arg.val = 1;
-    semctl(c->semid, 0, SETVAL, c->arg);
-
-    if (c->key < 0){
-	    perror(argv[0]);
-	    exit(1);
-    }
-    if(c->semid < 0){
-	    perror(argv[0]);
-	    exit(1);
-    }
+    pthread_mutex_init(&c->lock, NULL);
 }
 
 void increment(counter_t *c) {
-    struct sembuf s;
-    s.sem_num = 0;
-    s.sem_op = -1;
-    s.sem_flg = 0;
-    semop(c->semid, &s, 1);
+    pthread_mutex_lock(&c->lock);
     c->value++;
-    s.sem_num = 0;
-    s.sem_op = 1;
-    s.sem_flg = 0;
-    semop(c->semid, &s, 1);
+    pthread_mutex_unlock(&c->lock);
 }
 
 void decrement(counter_t *c) {
-    struct sembuf s;
-    s.sem_num = 0;
-    s.sem_op = -1;
-    s.sem_flg = 0;
-    semop(c->semid, &s, 1);
+    pthread_mutex_lock(&c->lock);
     c->value--;
-    s.sem_num = 0;
-    s.sem_op = 1;
-    s.sem_flg = 0;
-    semop(c->semid, &s, 1);
+    pthread_mutex_unlock(&c->lock);
 }
 
 int get(counter_t *c) {
-    struct sembuf s;
-    s.sem_num = 0;
-    s.sem_op = -1;
-    s.sem_flg= 0;
-    semop(c->semid, &s, 1);
+    pthread_mutex_lock(&c->lock);
     int rc = c->value;
-    s.sem_num = 0;
-    s.sem_op = 1;
-    s.sem_flg = 0;
-    semop(c->semid, &s, 1);
+    pthread_mutex_unlock(&c->lock);
     return rc;
 }
 
@@ -96,9 +50,11 @@ void *mythread(void *arg)
 }
                                                                              
 int main(int argc, char *argv[])
-{                      
+{                    
     loop_cnt = atoi(argv[1]);
-    init(&counter, argv);
+
+    init(&counter);
+
     pthread_t p1, p2;
     printf("main: begin [counter = %d]\n", get(&counter));
     pthread_create(&p1, NULL, mythread, "A"); 
@@ -107,6 +63,5 @@ int main(int argc, char *argv[])
     pthread_join(p1, NULL); 
     pthread_join(p2, NULL); 
     printf("main: done [counter: %d] [should be: %d]\n", get(&counter), loop_cnt * 2);
-
     return 0;
 }
