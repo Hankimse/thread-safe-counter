@@ -13,7 +13,7 @@ union semun {
 	ushort *array;
 };
 
-#define PATH "/home"
+#define PATH "/mnt/c/Users/김세한"
 
 typedef struct __counter_t {
     int value;
